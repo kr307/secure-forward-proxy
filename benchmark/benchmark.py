@@ -1,19 +1,19 @@
 """
 Secure Forward Proxy - Concurrency & Latency Benchmark Suite
 Simulates concurrent clients routing HTTP & CONNECT requests through the proxy.
-Measures requests/sec throughput, latency percentiles (p50, p95, p99), and connection stability.
+Measures both the Policy Rejection Path (blocked targets) and the Upstream Forwarding Path (allowed targets).
 """
 
 import argparse
 import asyncio
 import statistics
 import time
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 import aiohttp
 
 
 async def mock_target_server(port: int = 9999):
-    """Spins up a local zero-latency HTTP target server for benchmarking proxy overhead."""
+    """Spins up a local zero-latency HTTP target server for benchmarking proxy forwarding overhead."""
     from aiohttp import web
 
     async def handle_ping(request):
@@ -51,29 +51,18 @@ async def worker(
                 status_counts["ERROR"] = status_counts.get("ERROR", 0) + 1
 
 
-async def run_benchmark(
-    concurrency: int = 50,
-    total_requests: int = 500,
-    proxy_url: str = "http://127.0.0.1:8080",
-    test_mode: str = "blocked"
-):
-    print(f"\n=================================================================")
-    print(f"       AEGIS GATE PROXY PERFORMANCE BENCHMARK")
-    print(f"=================================================================")
-    print(f"  Concurrency Level:      {concurrency} simultaneous workers")
-    print(f"  Total Requests:         {total_requests}")
-    print(f"  Benchmark Target Mode:  {test_mode.upper()}")
-    print(f"  Forward Proxy:          {proxy_url}")
-    print(f"-----------------------------------------------------------------")
-
+async def run_single_benchmark(
+    concurrency: int,
+    total_requests: int,
+    proxy_url: str,
+    test_mode: str
+) -> Dict[str, float]:
     target_runner = None
     if test_mode == "allowed":
-        # Launch local mock upstream server on port 9999
-        print("  Starting mock upstream target server on 127.0.0.1:9999...")
         target_runner = await mock_target_server(9999)
         target_url = "http://127.0.0.1:9999/test"
     else:
-        # Test blocking speed against a blacklisted domain (e.g. facebook.com)
+        # Matches blacklisted category (social-media)
         target_url = "http://facebook.com/"
 
     latencies: List[float] = []
@@ -81,52 +70,81 @@ async def run_benchmark(
     reqs_per_worker = max(1, total_requests // concurrency)
     actual_total = reqs_per_worker * concurrency
 
-    print(f"  Firing {actual_total} requests across {concurrency} async workers...")
     start_time = time.perf_counter()
-
     tasks = [
         worker(proxy_url, target_url, reqs_per_worker, latencies, status_counts)
         for _ in range(concurrency)
     ]
     await asyncio.gather(*tasks)
-
     total_time = time.perf_counter() - start_time
-    rps = actual_total / total_time if total_time > 0 else 0
 
     if target_runner:
         await target_runner.cleanup()
 
-    # Calculations
     latencies.sort()
     count = len(latencies)
-    avg_lat = statistics.mean(latencies) if latencies else 0.0
+    rps = count / total_time if total_time > 0 else 0
     p50 = statistics.median(latencies) if latencies else 0.0
     p90 = latencies[int(count * 0.90)] if count > 0 else 0.0
     p95 = latencies[int(count * 0.95)] if count > 0 else 0.0
     p99 = latencies[int(count * 0.99)] if count > 0 else 0.0
-    min_lat = latencies[0] if latencies else 0.0
-    max_lat = latencies[-1] if latencies else 0.0
 
-    print(f"\n-----------------------------------------------------------------")
-    print(f"                       BENCHMARK RESULTS")
-    print(f"-----------------------------------------------------------------")
-    print(f"  Time taken for tests:   {total_time:.3f} seconds")
-    print(f"  Complete requests:      {count} / {actual_total}")
-    print(f"  Throughput:             {rps:.2f} requests/sec")
-    print(f"-----------------------------------------------------------------")
-    print(f"  Latency Percentiles (ms):")
-    print(f"    Min:                  {min_lat:.2f} ms")
-    print(f"    50% (Median):         {p50:.2f} ms")
-    print(f"    90%:                  {p90:.2f} ms")
-    print(f"    95%:                  {p95:.2f} ms")
-    print(f"    99%:                  {p99:.2f} ms")
-    print(f"    Max:                  {max_lat:.2f} ms")
-    print(f"    Average:              {avg_lat:.2f} ms")
-    print(f"-----------------------------------------------------------------")
-    print(f"  HTTP Status Codes:")
-    for code, num in sorted(status_counts.items(), key=lambda x: str(x[0])):
-        print(f"    Status {code}:           {num}")
-    print(f"=================================================================\n")
+    return {
+        "mode": test_mode,
+        "completed": count,
+        "total": actual_total,
+        "duration_sec": total_time,
+        "rps": rps,
+        "min_ms": latencies[0] if latencies else 0.0,
+        "p50_ms": p50,
+        "p90_ms": p90,
+        "p95_ms": p95,
+        "p99_ms": p99,
+        "max_ms": latencies[-1] if latencies else 0.0,
+        "avg_ms": statistics.mean(latencies) if latencies else 0.0,
+        "status_counts": status_counts
+    }
+
+
+async def main_async(concurrency: int, total_requests: int, proxy_url: str, mode: str):
+    modes = ["blocked", "allowed"] if mode == "all" else [mode]
+
+    print("\n=================================================================")
+    print("       AEGIS GATE PROXY BENCHMARK SUITE")
+    print("=================================================================")
+    print(f"  Concurrency Level: {concurrency} workers")
+    print(f"  Total Requests:    {total_requests} per test mode")
+    print(f"  Proxy Endpoint:    {proxy_url}")
+    print("-----------------------------------------------------------------")
+
+    results = []
+    for m in modes:
+        print(f"\n[+] Executing benchmark for: {m.upper()} pipeline...")
+        res = await run_single_benchmark(concurrency, total_requests, proxy_url, m)
+        results.append(res)
+
+    print("\n=================================================================")
+    print("                    COMPARATIVE BENCHMARK RESULTS")
+    print("=================================================================")
+    print(f"{'Metric':<28} | {'Policy Rejection (Blocked)':<24} | {'Upstream Forward (Allowed)':<24}")
+    print("-" * 82)
+
+    by_mode = {r["mode"]: r for r in results}
+    b = by_mode.get("blocked", {})
+    a = by_mode.get("allowed", {})
+
+    def val(d, key, fmt="{:.2f}"):
+        v = d.get(key)
+        return fmt.format(v) if v is not None else "N/A"
+
+    print(f"{'Throughput (req/s)':<28} | {val(b, 'rps'):<24} | {val(a, 'rps'):<24}")
+    print(f"{'Median Latency p50 (ms)':<28} | {val(b, 'p50_ms'):<24} | {val(a, 'p50_ms'):<24}")
+    print(f"{'90th Percentile p90 (ms)':<28} | {val(b, 'p90_ms'):<24} | {val(a, 'p90_ms'):<24}")
+    print(f"{'95th Percentile p95 (ms)':<28} | {val(b, 'p95_ms'):<24} | {val(a, 'p95_ms'):<24}")
+    print(f"{'99th Percentile p99 (ms)':<28} | {val(b, 'p99_ms'):<24} | {val(a, 'p99_ms'):<24}")
+    print(f"{'Average Latency (ms)':<28} | {val(b, 'avg_ms'):<24} | {val(a, 'avg_ms'):<24}")
+    print(f"{'Execution Time (sec)':<28} | {val(b, 'duration_sec', '{:.3f}'):<24} | {val(a, 'duration_sec', '{:.3f}'):<24}")
+    print("=================================================================\n")
 
 
 def main():
@@ -134,10 +152,10 @@ def main():
     parser.add_argument("-c", "--concurrency", type=int, default=50, help="Number of concurrent clients")
     parser.add_argument("-n", "--requests", type=int, default=500, help="Total requests to dispatch")
     parser.add_argument("--proxy", default="http://127.0.0.1:8080", help="Proxy endpoint")
-    parser.add_argument("--mode", choices=["blocked", "allowed"], default="blocked", help="Benchmark blocked or allowed pipeline")
+    parser.add_argument("--mode", choices=["all", "blocked", "allowed"], default="all", help="Benchmark mode")
     args = parser.parse_args()
 
-    asyncio.run(run_benchmark(args.concurrency, args.requests, args.proxy, args.mode))
+    asyncio.run(main_async(args.concurrency, args.requests, args.proxy, args.mode))
 
 
 if __name__ == "__main__":
