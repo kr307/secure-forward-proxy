@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aegis Gate | Secure Forward Proxy & URL Filtering</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #0b0f19; }
+        .glass-panel { background: rgba(17, 24, 39, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .glow-red { box-shadow: 0 0 15px rgba(239, 68, 68, 0.2); }
+        .glow-green { box-shadow: 0 0 15px rgba(16, 185, 129, 0.2); }
+    </style>
+</head>
+<body class="text-slate-100 min-h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <header class="border-b border-slate-800 bg-slate-900/80 sticky top-0 z-50 backdrop-blur">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
+                    <i class="fa-solid fa-shield-halved text-xl"></i>
+                </div>
+                <div>
+                    <div class="font-bold text-lg tracking-tight flex items-center gap-2">
+                        <span>Aegis Gate</span>
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">SWG v1.0</span>
+                    </div>
+                    <div class="text-xs text-slate-400">Secure Forward Proxy & URL Filtering Engine</div>
+                </div>
+            </div>
+
+            <!-- Status Indicator -->
+            <div class="flex items-center space-x-6">
+                <div class="flex items-center space-x-2 text-xs">
+                    <span class="relative flex h-2.5 w-2.5">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
+                    <span class="text-slate-300 font-medium" id="proxy-status">Proxy Active (Port 8080)</span>
+                </div>
+                <div class="text-xs text-slate-400 border-l border-slate-800 pl-4">
+                    <span id="active-conns">0</span> Active Connections
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 py-8 flex-1 w-full space-y-8">
+
+        <!-- KPI Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-5">
+            <div class="glass-panel p-5 rounded-2xl">
+                <div class="flex justify-between items-center text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                    <span>Total Inspected</span>
+                    <i class="fa-solid fa-network-wired text-cyan-400"></i>
+                </div>
+                <div class="text-3xl font-extrabold text-white mt-3" id="stat-total">0</div>
+                <div class="text-xs text-slate-400 mt-1">Requests processed</div>
+            </div>
+
+            <div class="glass-panel p-5 rounded-2xl glow-red">
+                <div class="flex justify-between items-center text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                    <span>Threats Blocked</span>
+                    <i class="fa-solid fa-ban text-rose-500"></i>
+                </div>
+                <div class="text-3xl font-extrabold text-rose-400 mt-3" id="stat-blocked">0</div>
+                <div class="text-xs text-rose-400/80 mt-1 flex items-center gap-1">
+                    <span id="stat-block-rate">0%</span> block rate
+                </div>
+            </div>
+
+            <div class="glass-panel p-5 rounded-2xl glow-green">
+                <div class="flex justify-between items-center text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                    <span>Allowed Traffic</span>
+                    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                </div>
+                <div class="text-3xl font-extrabold text-emerald-400 mt-3" id="stat-allowed">0</div>
+                <div class="text-xs text-slate-400 mt-1">Clean web sessions</div>
+            </div>
+
+            <div class="glass-panel p-5 rounded-2xl">
+                <div class="flex justify-between items-center text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                    <span>Total Data Volume</span>
+                    <i class="fa-solid fa-database text-purple-400"></i>
+                </div>
+                <div class="text-3xl font-extrabold text-white mt-3" id="stat-bytes">0 KB</div>
+                <div class="text-xs text-slate-400 mt-1">Transferred through proxy</div>
+            </div>
+        </div>
+
+        <!-- Category & Policy Interactive Control Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Category Enforcement Toggles -->
+            <div class="lg:col-span-2 glass-panel p-6 rounded-2xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div>
+                        <h2 class="font-bold text-lg text-white flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-cyan-400"></i> Security Category Policies
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">Toggle organizational threat & content filters in real time</p>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="category-list">
+                    <div class="text-slate-500 text-sm py-4">Loading threat categories...</div>
+                </div>
+            </div>
+
+            <!-- Real-time Policy Simulator / Tester -->
+            <div class="glass-panel p-6 rounded-2xl space-y-4">
+                <div class="border-b border-slate-800 pb-4">
+                    <h2 class="font-bold text-lg text-white flex items-center gap-2">
+                        <i class="fa-solid fa-vial-circle-check text-emerald-400"></i> Policy Simulator
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-1">Test how a domain or URL will be evaluated</p>
+                </div>
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">Target Host / Domain</label>
+                        <input type="text" id="test-domain" placeholder="e.g. facebook.com, evil-c2.com" 
+                            class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500">
+                    </div>
+                    <button onclick="simulatePolicy()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-2 rounded-lg text-sm transition">
+                        Evaluate Policy
+                    </button>
+
+                    <!-- Result Card -->
+                    <div id="test-result" class="hidden p-4 rounded-xl border border-slate-800 bg-slate-900/60 space-y-2 text-xs">
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-400 font-semibold">Outcome:</span>
+                            <span id="test-action" class="font-bold px-2 py-0.5 rounded">ALLOW</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Category:</span>
+                            <span id="test-cat" class="text-slate-200 font-mono"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Rule:</span>
+                            <span id="test-rule" class="text-slate-200 font-mono"></span>
+                        </div>
+                        <div class="text-slate-400 text-2xs pt-1 border-t border-slate-800" id="test-reason"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Domain / Wildcard Rules Management -->
+        <div class="glass-panel p-6 rounded-2xl space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-4 gap-3">
+                <div>
+                    <h2 class="font-bold text-lg text-white flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-purple-400"></i> Custom Domain & Wildcard Rules
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-1">Add explicit overrides for domains, wildcards (*.target.com), or regex</p>
+                </div>
+
+                <!-- Add Rule Form Inline -->
+                <form onsubmit="addCustomRule(event)" class="flex flex-wrap items-center gap-2">
+                    <input type="text" id="new-pattern" placeholder="*.tiktok.com or domain.com" required
+                        class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                    <select id="new-type" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200">
+                        <option value="exact">Exact</option>
+                        <option value="wildcard" selected>Wildcard</option>
+                        <option value="regex">Regex</option>
+                    </select>
+                    <select id="new-action" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200">
+                        <option value="BLOCK" selected>BLOCK</option>
+                        <option value="ALLOW">ALLOW</option>
+                    </select>
+                    <button type="submit" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-4 py-1.5 rounded-lg transition">
+                        + Add Rule
+                    </button>
+                </form>
+            </div>
+
+            <!-- Custom Rules Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs text-slate-300">
+                    <thead class="bg-slate-900/60 text-slate-400 uppercase font-semibold text-2xs border-b border-slate-800">
+                        <tr>
+                            <th class="py-2.5 px-3">Pattern</th>
+                            <th class="py-2.5 px-3">Match Type</th>
+                            <th class="py-2.5 px-3">Action</th>
+                            <th class="py-2.5 px-3">Scope</th>
+                            <th class="py-2.5 px-3">Created</th>
+                            <th class="py-2.5 px-3 text-right">Manage</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rules-tbody" class="divide-y divide-slate-800/60 font-mono">
+                        <tr><td colspan="6" class="py-4 text-center text-slate-500">No custom rules configured yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Real-time Live Audit Intercept Feed -->
+        <div class="glass-panel p-6 rounded-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                <div>
+                    <h2 class="font-bold text-lg text-white flex items-center gap-2">
+                        <i class="fa-solid fa-satellite-dish text-cyan-400 animate-pulse"></i> Live Intercept Stream
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-1">Real-time inspection of HTTP & HTTPS CONNECT proxy traffic</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <select id="log-filter" onchange="fetchLogs()" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200">
+                        <option value="">All Traffic</option>
+                        <option value="BLOCK">Blocked Only</option>
+                        <option value="ALLOW">Allowed Only</option>
+                    </select>
+                    <button onclick="fetchLogs()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded-lg border border-slate-700">
+                        <i class="fa-solid fa-arrows-rotate mr-1"></i> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs text-slate-300">
+                    <thead class="bg-slate-900/60 text-slate-400 uppercase font-semibold text-2xs border-b border-slate-800">
+                        <tr>
+                            <th class="py-2.5 px-3">Time (UTC)</th>
+                            <th class="py-2.5 px-3">Client</th>
+                            <th class="py-2.5 px-3">Method</th>
+                            <th class="py-2.5 px-3">Destination Host</th>
+                            <th class="py-2.5 px-3">Category</th>
+                            <th class="py-2.5 px-3">Action</th>
+                            <th class="py-2.5 px-3">Latency</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-tbody" class="divide-y divide-slate-800/60 font-mono">
+                        <tr><td colspan="7" class="py-4 text-center text-slate-500">Waiting for proxy traffic...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="border-t border-slate-800 py-4 text-center text-xs text-slate-500">
+        Aegis Gate Forward Proxy &bull; Miniature Enterprise SWG Engine &bull; Academic & Portfolio Project
+    </footer>
+
+    <script>
+        function formatBytes(bytes) {
+            if (!bytes || bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        async function fetchStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                document.getElementById('stat-total').innerText = (data.total_requests || 0).toLocaleString();
+                document.getElementById('stat-blocked').innerText = (data.blocked_requests || 0).toLocaleString();
+                document.getElementById('stat-allowed').innerText = (data.allowed_requests || 0).toLocaleString();
+                document.getElementById('stat-block-rate').innerText = (data.block_rate || 0) + '%';
+                document.getElementById('stat-bytes').innerText = formatBytes(data.total_bytes);
+
+                if (data.proxy_runtime) {
+                    document.getElementById('active-conns').innerText = data.proxy_runtime.active_connections;
+                }
+            } catch (e) {
+                console.error("Stats poll error", e);
+            }
+        }
+
+        async function fetchRulesAndCategories() {
+            try {
+                const res = await fetch('/api/rules');
+                const data = await res.json();
+
+                // Render categories
+                const catContainer = document.getElementById('category-list');
+                catContainer.innerHTML = '';
+                data.categories.forEach(cat => {
+                    const isBlocked = cat.action === 'BLOCK';
+                    const div = document.createElement('div');
+                    div.className = `p-3 rounded-xl border flex items-center justify-between transition ${
+                        isBlocked ? 'bg-rose-950/20 border-rose-900/40' : 'bg-slate-900/60 border-slate-800'
+                    }`;
+                    div.innerHTML = `
+                        <div>
+                            <div class="font-semibold text-xs text-white capitalize flex items-center gap-1.5">
+                                <span>${cat.name.replace('-', ' ')}</span>
+                                <span class="text-3xs text-slate-400">(${cat.domain_count} domains)</span>
+                            </div>
+                            <div class="text-3xs text-slate-400 truncate max-w-[200px]">${cat.description}</div>
+                        </div>
+                        <button onclick="toggleCategory('${cat.name}', '${isBlocked ? 'ALLOW' : 'BLOCK'}')" 
+                            class="px-2.5 py-1 text-3xs font-bold rounded-lg border uppercase transition ${
+                                isBlocked 
+                                ? 'bg-rose-600/30 text-rose-300 border-rose-500/40 hover:bg-rose-600/50' 
+                                : 'bg-emerald-600/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-600/40'
+                            }">
+                            ${cat.action}
+                        </button>
+                    `;
+                    catContainer.appendChild(div);
+                });
+
+                // Render custom rules
+                const tbody = document.getElementById('rules-tbody');
+                tbody.innerHTML = '';
+                if (!data.custom_rules || data.custom_rules.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="py-4 text-center text-slate-500">No custom rules active.</td></tr>';
+                } else {
+                    data.custom_rules.forEach(r => {
+                        const tr = document.createElement('tr');
+                        tr.className = "hover:bg-slate-800/40 transition";
+                        tr.innerHTML = `
+                            <td class="py-2.5 px-3 text-cyan-300 font-semibold">${r.pattern}</td>
+                            <td class="py-2.5 px-3 text-slate-400 uppercase text-3xs">${r.rule_type}</td>
+                            <td class="py-2.5 px-3">
+                                <span class="px-2 py-0.5 rounded text-3xs font-bold ${
+                                    r.action === 'BLOCK' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                }">${r.action}</span>
+                            </td>
+                            <td class="py-2.5 px-3 text-slate-400">${r.user_target}</td>
+                            <td class="py-2.5 px-3 text-slate-500 text-3xs">${r.created_at.substring(0, 10)}</td>
+                            <td class="py-2.5 px-3 text-right">
+                                <button onclick="deleteRule(${r.id})" class="text-rose-400 hover:text-rose-300">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            } catch (e) {
+                console.error("Rules fetch error", e);
+            }
+        }
+
+        async function toggleCategory(name, action) {
+            await fetch(`/api/categories/${name}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action})
+            });
+            fetchRulesAndCategories();
+            fetchStats();
+        }
+
+        async function addCustomRule(e) {
+            e.preventDefault();
+            const pattern = document.getElementById('new-pattern').value;
+            const rule_type = document.getElementById('new-type').value;
+            const action = document.getElementById('new-action').value;
+            await fetch('/api/rules', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({pattern, rule_type, action})
+            });
+            document.getElementById('new-pattern').value = '';
+            fetchRulesAndCategories();
+            fetchStats();
+        }
+
+        async function deleteRule(id) {
+            if (!confirm('Delete this rule?')) return;
+            await fetch(`/api/rules/${id}`, { method: 'DELETE' });
+            fetchRulesAndCategories();
+            fetchStats();
+        }
+
+        async function simulatePolicy() {
+            const host = document.getElementById('test-domain').value.trim();
+            if (!host) return;
+            const res = await fetch('/api/test-policy', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({host})
+            });
+            const data = await res.json();
+            const card = document.getElementById('test-result');
+            card.classList.remove('hidden');
+
+            const actElem = document.getElementById('test-action');
+            actElem.innerText = data.action;
+            if (data.action === 'BLOCK') {
+                actElem.className = "font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/40";
+            } else {
+                actElem.className = "font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40";
+            }
+            document.getElementById('test-cat').innerText = data.category;
+            document.getElementById('test-rule').innerText = data.rule_name;
+            document.getElementById('test-reason').innerText = data.reason;
+        }
+
+        async function fetchLogs() {
+            try {
+                const filter = document.getElementById('log-filter').value;
+                const url = filter ? `/api/logs?action=${filter}&limit=30` : '/api/logs?limit=30';
+                const res = await fetch(url);
+                const data = await res.json();
+                const tbody = document.getElementById('logs-tbody');
+                tbody.innerHTML = '';
+
+                if (!data.logs || data.logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="py-4 text-center text-slate-500">No access logs found.</td></tr>';
+                    return;
+                }
+
+                data.logs.forEach(log => {
+                    const tr = document.createElement('tr');
+                    tr.className = "hover:bg-slate-800/40 transition text-2xs";
+                    const isBlocked = log.action === 'BLOCK';
+                    tr.innerHTML = `
+                        <td class="py-2 px-3 text-slate-400">${log.timestamp.substring(11, 19)}</td>
+                        <td class="py-2 px-3 text-slate-300">${log.client_ip}</td>
+                        <td class="py-2 px-3 text-cyan-400 font-bold">${log.method}</td>
+                        <td class="py-2 px-3 text-white font-medium truncate max-w-[220px]">${log.host}</td>
+                        <td class="py-2 px-3 text-slate-400 capitalize">${log.category || 'unclassified'}</td>
+                        <td class="py-2 px-3">
+                            <span class="px-2 py-0.5 rounded font-bold ${
+                                isBlocked ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            }">${log.action}</span>
+                        </td>
+                        <td class="py-2 px-3 text-slate-400">${log.duration_ms} ms</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                console.error("Logs poll error", e);
+            }
+        }
+
+        // Initialize and polling loop
+        fetchStats();
+        fetchRulesAndCategories();
+        fetchLogs();
+        setInterval(fetchStats, 3000);
+        setInterval(fetchLogs, 2500);
+    </script>
+</body>
+</html>

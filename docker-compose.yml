@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  aegis-proxy:
+    build: .
+    container_name: aegis-gate-proxy
+    restart: unless-stopped
+    ports:
+      - "8080:8080" # Forward Proxy port
+      - "8081:8081" # Admin Web Dashboard
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/api/stats"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

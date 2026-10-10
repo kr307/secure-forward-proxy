@@ -1,0 +1,82 @@
+categories:
+  malware:
+    description: "Malicious command and control, malware distribution, and ransomware hosts"
+    action: "BLOCK"
+    domains:
+      - "malware-traffic-analysis.net"
+      - "evil-c2-server.com"
+      - "ransomware-drop.ru"
+      - "trojan-download.info"
+      - "botnet-controller.xyz"
+      - "suspicious-payload.co"
+
+  phishing:
+    description: "Deceptive websites attempting credential harvesting and financial fraud"
+    action: "BLOCK"
+    domains:
+      - "secure-login-apple-update.com"
+      - "paypal-security-verification.net"
+      - "chase-bank-verify-account.info"
+      - "microsoft-account-secure-login.xyz"
+      - "google-drive-shared-doc-phish.top"
+
+  social-media:
+    description: "Social networking and microblogging platforms"
+    action: "BLOCK"
+    domains:
+      - "facebook.com"
+      - "www.facebook.com"
+      - "instagram.com"
+      - "www.instagram.com"
+      - "twitter.com"
+      - "x.com"
+      - "tiktok.com"
+      - "www.tiktok.com"
+      - "reddit.com"
+      - "www.reddit.com"
+      - "snapchat.com"
+      - "linkedin.com"
+      - "pinterest.com"
+
+  gambling:
+    description: "Online casinos, sports betting, and lottery portals"
+    action: "BLOCK"
+    domains:
+      - "bet365.com"
+      - "pokerstars.com"
+      - "bovada.lv"
+      - "draftkings.com"
+      - "fanduel.com"
+      - "stake.com"
+
+  crypto-scams:
+    description: "Cryptocurrency drainers, fraudulent exchanges, and giveaway scams"
+    action: "BLOCK"
+    domains:
+      - "free-bitcoin-multiplier.net"
+      - "claim-airdrop-solana.org"
+      - "eth-doubler-giveaway.xyz"
+      - "uniswap-v3-reward-drainer.click"
+
+  streaming:
+    description: "High-bandwidth video and audio streaming services"
+    action: "ALLOW"
+    domains:
+      - "netflix.com"
+      - "youtube.com"
+      - "youtu.be"
+      - "spotify.com"
+      - "twitch.tv"
+      - "disneyplus.com"
+      - "hulu.com"
+
+  news:
+    description: "Major news agencies and editorial sites"
+    action: "ALLOW"
+    domains:
+      - "bbc.com"
+      - "cnn.com"
+      - "reuters.com"
+      - "theguardian.com"
+      - "bloomberg.com"
+      - "nytimes.com"
