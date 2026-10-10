@@ -1,111 +1,131 @@
-# Aegis Gate: Secure Forward Proxy & URL Filtering Gateway
+# Aegis Gate: Forward Proxy with URL & Domain Filtering
 
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![AsyncIO](https://img.shields.io/badge/Concurrency-AsyncIO%20Streams-purple.svg)](https://docs.python.org/3/library/asyncio.html)
-[![Tests](https://img.shields.io/badge/Tests-12%20Passed%20(Pytest)-brightgreen.svg)](https://pytest.org)
-[![Throughput](https://img.shields.io/badge/Throughput-2%2C600%2B%20req%2Fs-orange.svg)](#performance-benchmarks)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](Dockerfile)
+[![Concurrency](https://img.shields.io/badge/Concurrency-asyncio-purple.svg)](https://docs.python.org/3/library/asyncio.html)
+[![Tests](https://img.shields.io/badge/Tests-12%20Passed-brightgreen.svg)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-An enterprise-grade, asynchronous **HTTP/HTTPS Forward Proxy & Secure Web Gateway (SWG)** in miniature — engineered to demonstrate low-level network programming, TCP/TLS fundamentals, socket streaming, and real-time security policy enforcement.
+An asynchronous HTTP/HTTPS forward proxy written in Python (`asyncio`). It intercepts client traffic, handles RFC 7231 `CONNECT` tunneling for HTTPS, inspects TLS Server Name Indication (SNI) packets, evaluates requests against configurable domain and category policies, logs access events asynchronously, and provides a web-based administration console.
 
 ---
 
-## ✨ Features
+## Architecture Overview
 
-- **⚡ Asynchronous High-Concurrency Core:** Built on Python's native `asyncio` streams (`asyncio.start_server`). Supports thousands of concurrent connections with minimal memory overhead.
-- **🔒 RFC 7231 HTTPS `CONNECT` Tunneling:** Handles end-to-end bidirectional TCP streaming between clients and destination servers.
-- **🛡️ In-Memory TLS SNI Inspection:** Zero-dependency binary parser for RFC 6066 / RFC 5246 TLS `ClientHello` packets to inspect the Server Name Indication without breaking end-to-end TLS encryption or installing MITM certificates.
-- **🎯 Multi-Tier Policy Engine:**
-  - **Categorized Threat Database:** Pre-configured rules for `malware`, `phishing`, `social-media`, `gambling`, `crypto-scams`, and `streaming`.
-  - **Custom Overrides:** Real-time exact matches, wildcard domain patterns (`*.domain.com`), and regex rules.
-  - **Per-User / Identity Policies:** Enforce granular access based on `Proxy-Authorization` credentials.
-- **📊 Real-Time Web Admin Dashboard (Port 8081):**
-  - **Live Intercept Feed:** Inspect incoming requests, target hosts, latency, and enforcement outcomes in real time.
-  - **Interactive Security Toggles:** 1-click toggle to block/allow entire threat categories without server restart.
-  - **Live Policy Simulator:** Test any domain or URL against active policies with instant feedback.
-- **💾 Zero-Lock Asynchronous Audit Logger:** Asynchronously batches access logs into SQLite via memory queues, avoiding disk I/O bottlenecks.
-- **🚀 Concurrency & Latency Benchmark Suite:** Integrated tool measuring req/sec throughput and latency percentiles ($p50, p95, p99$).
-
----
-
-## 🏛️ System Architecture
+A forward proxy handles outbound client traffic rather than incoming server traffic. Aegis Gate is structured into five decoupled modules:
 
 ```
-                                      +---------------------------------------------+
-                                      |                 AEGIS GATE                  |
-+-------------+                       |  +---------------------------------------+  |       +---------------------+
-|   Client    | --- HTTP Request ---> |  |      Async TCP Listener (Port 8080)   |  | ----> | External Web Server |
-| Application |                       |  +---------------------------------------+  |       |  (e.g., origin.com) |
-+-------------+                       |                      |                      |       +---------------------+
-                                      |  +---------------------------------------+  |                  ^
-                                      |  |        Policy Engine Pipeline         |  |                  |
-                                      |  | - User Rules  - Wildcards  - Category |  |                  |
-                                      |  +---------------------------------------+  |                  |
-                                      |         | (Allowed)           | (Blocked)   |                  |
-                                      |         v                     v             |                  |
-                                      |  +-------------+      +------------------+  |                  |
-                                      |  | CONNECT /   |      | 403 Forbidden    |  |                  |
-                                      |  | TCP Tunnel  |      | HTML Block Page  |  |                  |
-                                      |  +-------------+      +------------------+  |                  |
-                                      |         |                      |            |                  |
-                                      |         +----------+-----------+            |                  |
-                                      |                    v                        |                  |
-                                      |  +---------------------------------------+  |                  |
-                                      |  |   Async Non-Blocking Queue Writer     |  |                  |
-                                      |  +---------------------------------------+  |                  |
-                                      +--------------------|------------------------+                  |
-                                                           v                                           |
-                                               +------------------------+                              |
-                                               | SQLite Audit Database  |                              |
-                                               +------------------------+                              |
-                                                           ^                                           |
-                                                           |                                           |
-                                               +------------------------+                              |
-                                               |  Admin Web Dashboard   | -----------------------------+
-                                               |     (Port 8081)        |
-                                               +------------------------+
++---------------+        +-------------------------------------------------------+        +----------------------+
+| Client Device | -----> |                      AEGIS GATE                       | -----> | Destination Server   |
+| (Browser/CLI) |        |  +-------------------------------------------------+  |        | (e.g. example.com)   |
++---------------+        |  | TCP Listener (asyncio.start_server, port 8080)  |  |        +----------------------+
+                         |  +-------------------------------------------------+  |
+                         |                           |                           |
+                         |  +-------------------------------------------------+  |
+                         |  | Policy Engine (Exact, Wildcard, Regex, Category)|  |
+                         |  +-------------------------------------------------+  |
+                         |          | (Allowed)                  | (Blocked)     |
+                         |          v                            v               |
+                         |  +-------------------+       +---------------------+  |
+                         |  | CONNECT Tunnel /  |       | 403 Forbidden       |  |
+                         |  | Upstream Forward  |       | HTML Block Page     |  |
+                         |  +-------------------+       +---------------------+  |
+                         |          |                            |               |
+                         |          +-------------+--------------+               |
+                         |                        v                              |
+                         |  +-------------------------------------------------+  |
+                         |  | Asynchronous Batch Queue -> SQLite (proxy.db)   |  |
+                         |  +-------------------------------------------------+  |
+                         +------------------------|------------------------------+
+                                                  v
+                                      +-----------------------+
+                                      | Web Console (port 8081|
+                                      +-----------------------+
+```
+
+1. **Proxy Core (`proxy/`):** Listens for incoming client TCP sockets, reads initial HTTP request lines, evaluates policies, and handles either regular HTTP proxying or bidirectional `CONNECT` tunneling.
+2. **TLS SNI Parser (`proxy/sni_parser.py`):** An in-memory binary parser for TLS 1.2/1.3 `ClientHello` packets (RFC 5246, RFC 6066). Extracts the destination hostname directly from the binary stream without terminating TLS.
+3. **Policy Engine (`policy/`):** Evaluates requests in order: per-user rules -> exact domain matches -> wildcard matches (`*.reddit.com`) -> regex rules -> threat category database (`malware`, `social-media`, `gambling`, etc.) -> default fallback action.
+4. **Storage & Audit Layer (`storage/`):** Implements an in-memory queue (`asyncio.Queue`) drained by a background worker into SQLite via `executemany` batches, preventing synchronous disk I/O from stalling the proxy event loop.
+5. **Admin Dashboard (`dashboard/`):** An `aiohttp` web application providing real-time log inspection, 1-click category enforcement toggles, custom rule management, and a policy evaluation simulator.
+
+![Aegis Gate Web Management Console](docs/dashboard_preview.png)
+
+---
+
+## Performance Benchmarks
+
+The benchmark suite (`benchmark/benchmark.py`) tests two distinct code paths under 50 concurrent async workers:
+
+1. **Policy Rejection Path (Blocked Traffic):** Measures the proxy's in-memory policy lookup and fast 403 response generation without upstream socket creation.
+2. **Upstream Forwarding Path (Allowed Traffic):** Measures end-to-end proxying against a local mock HTTP server, including upstream TCP socket connection, request forwarding, response piping, and socket teardown.
+
+### Benchmark Results (50 Concurrent Workers, 500 Requests per test)
+
+| Metric | Policy Rejection Path (Blocked) | Upstream Forwarding Path (Allowed) |
+| :--- | :--- | :--- |
+| **Throughput** | **2,616 requests/sec** | **1,392 requests/sec** |
+| **Median Latency ($p50$)** | **18.89 ms** | **35.13 ms** |
+| **90th Percentile ($p90$)** | **21.57 ms** | **38.99 ms** |
+| **95th Percentile ($p95$)** | **22.31 ms** | **40.08 ms** |
+| **99th Percentile ($p99$)** | **22.60 ms** | **40.39 ms** |
+| **Average Latency** | **18.42 ms** | **34.35 ms** |
+| **HTTP Status Code** | 100% `403 Forbidden` | 100% `200 OK` |
+
+To reproduce these numbers locally:
+```bash
+python benchmark/benchmark.py -c 50 -n 500 --mode all
 ```
 
 ---
 
-## ⚡ Quickstart
+## Known Limitations & Design Trade-offs
+
+Being honest about architectural boundaries is essential when discussing network systems:
+
+1. **No Full TLS Interception (No MITM / Deep Packet Inspection):**
+   Aegis Gate does not terminate TLS sessions. It inspects only the outer `CONNECT` request and the unencrypted `ClientHello` SNI. Consequently, it cannot inspect inner HTTP request methods, query strings, headers, or POST payloads on HTTPS traffic without deploying a custom private root CA to every client machine.
+
+2. **Encrypted Client Hello (ECH / RFC 8744):**
+   Modern browsers and TLS implementations are transitioning to Encrypted Client Hello (ECH), which encrypts the SNI extension inside an outer `ClientHello`. When ECH is negotiated, passive SNI sniffing cannot extract the inner destination hostname unless ECH DNS records (`HTTPS` / `SVCB` resource records) are stripped or blocked at the network resolver.
+
+3. **SNI Spoofing and Domain Fronting:**
+   While the proxy checks both the HTTP `CONNECT` target and the TLS SNI extension for consistency, a sophisticated client can technically craft mismatched SNI fields or route through shared CDNs (domain fronting). Mitigating this without full TLS decryption requires strict DNS-to-IP validation or IP-layer egress firewalls.
+
+4. **SQLite Concurrency Ceiling:**
+   Access logs are batched into SQLite via an asynchronous queue to avoid event loop blocking. While effective for single-instance workloads, SQLite relies on file-level write locking. Scaling to multi-instance or high-throughput production would require replacing SQLite with a distributed write-optimized store like Redis, PostgreSQL, or ClickHouse.
+
+5. **Single-Process Event Loop:**
+   Python's Global Interpreter Lock (GIL) and single-threaded event loop bind processing to a single CPU core. Multi-core scaling requires spawning multiple worker processes behind a Layer 4 load balancer using socket reuse (`SO_REUSEPORT`).
+
+---
+
+## Quickstart
 
 ### Prerequisites
 - Python 3.10+ (tested on Python 3.12)
 - Git
 
-### 1. Clone & Install
+### 1. Installation
 ```bash
 git clone https://github.com/kr307/secure-forward-proxy.git
 cd secure-forward-proxy
 
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Run the Gateway & Dashboard
+### 2. Running the Proxy
 ```bash
 python main.py
 ```
-
-The services will start automatically:
 - **Proxy Server:** `http://0.0.0.0:8080`
 - **Admin Dashboard:** `http://localhost:8081`
 
 ---
 
-## 🧪 Testing the Proxy
+## Testing Interception
 
-### A. Test Allowed Traffic
+### Test 1: Blocked Category (Social Media)
 ```bash
-# Route a standard request through the proxy
-curl -x http://127.0.0.1:8080 -L http://example.com/
-```
-
-### B. Test Category Interception (Blocked Social Media)
-```bash
-# facebook.com is blocked by default under corporate policy
 curl -x http://127.0.0.1:8080 -i http://facebook.com/
 ```
 **Response:**
@@ -115,114 +135,72 @@ Content-Type: text/html; charset=utf-8
 X-Proxy-Action: BLOCKED
 X-Proxy-Category: social-media
 ...
-[Zscaler-style responsive HTML Block Page]
+[HTML Policy Block Page]
 ```
 
-### C. Test HTTPS CONNECT Tunneling
+### Test 2: Allowed Forwarding
+```bash
+curl -x http://127.0.0.1:8080 -I http://example.com/
+```
+
+### Test 3: HTTPS CONNECT Tunneling
 ```bash
 curl -x http://127.0.0.1:8080 -I https://www.bbc.com/
 ```
 
 ---
 
-## 📈 Performance Benchmarks
-
-Run the built-in async load testing suite:
-```bash
-python benchmark/benchmark.py -c 50 -n 500 --mode blocked
-```
-
-### Results on Standard Hardware:
-| Metric | Result |
-| :--- | :--- |
-| **Concurrency Level** | 50 simultaneous asynchronous workers |
-| **Total Requests** | 500 requests |
-| **Throughput** | **2,616.45 requests/sec** |
-| **Total Test Duration** | **0.191 seconds** |
-| **Median Latency ($p50$)** | **18.89 ms** |
-| **95th Percentile ($p95$)** | **22.31 ms** |
-| **99th Percentile ($p99$)** | **22.60 ms** |
-| **Success Rate** | 100% |
-
----
-
-## 🧪 Running the Automated Test Suite
+## Automated Test Suite
 
 ```bash
 python -m pytest tests/ -v
 ```
 
-```
-tests/test_policy.py::test_category_block PASSED                        [  8%]
-tests/test_policy.py::test_category_subdomain_inheritance PASSED        [ 16%]
-tests/test_policy.py::test_category_allow PASSED                        [ 25%]
-tests/test_policy.py::test_custom_wildcard_rule PASSED                  [ 33%]
-tests/test_policy.py::test_custom_exact_rule PASSED                     [ 41%]
-tests/test_policy.py::test_default_allow_fallback PASSED                 [ 50%]
-tests/test_proxy.py::test_proxy_blocks_forbidden_domain_get PASSED      [ 58%]
-tests/test_proxy.py::test_proxy_blocks_forbidden_connect PASSED         [ 66%]
-tests/test_sni.py::test_sni_extraction_success PASSED                   [ 75%]
-tests/test_sni.py::test_sni_extraction_non_tls PASSED                   [ 83%]
-tests/test_sni.py::test_sni_extraction_truncated PASSED                 [ 91%]
-tests/test_sni.py::test_sni_extraction_empty PASSED                     [100%]
-
-============================= 12 passed in 0.24s ==============================
-```
+All 12 unit and integration tests verify:
+- Binary TLS ClientHello SNI parsing and truncation handling
+- Subdomain inheritance and wildcard precedence
+- HTTP GET blocking and custom header verification
+- HTTPS CONNECT blocking and connection rejection
 
 ---
 
-## 🐳 Docker Deployment
-
-Run with Docker Compose:
-```bash
-docker-compose up --build -d
-```
-Access the dashboard at `http://localhost:8081`.
-
----
-
-## 📂 Project Structure
+## Project Structure
 
 ```
 secure-forward-proxy/
-├── proxy/                   # Core Proxy Engine
-│   ├── server.py            # Asyncio TCP Server Listener & Worker Manager
-│   ├── handler.py           # HTTP/CONNECT Protocol Parser & Block Pages
-│   ├── sni_parser.py        # Binary TLS ClientHello SNI Extractor
-│   └── tunnel.py            # High-Throughput Bidirectional TCP Pipe
-├── policy/                  # Policy & Threat Intelligence Engine
-│   └── engine.py            # Hierarchical Pattern, Regex & Category Evaluator
-├── storage/                 # Storage & Auditing Engine
-│   └── db.py                # Asynchronous SQLite Queue & Analytical Queries
-├── dashboard/               # Administrative Management
-│   ├── app.py               # REST API & Web Router (aiohttp)
+├── proxy/
+│   ├── server.py              # Asyncio TCP socket listener & worker pool
+│   ├── handler.py             # HTTP/CONNECT protocol parser & block page generator
+│   ├── sni_parser.py          # Binary TLS ClientHello SNI extractor (RFC 6066)
+│   └── tunnel.py              # Bidirectional TCP streaming pipe
+├── policy/
+│   └── engine.py              # Multi-tier policy & category evaluation engine
+├── storage/
+│   └── db.py                  # Asynchronous SQLite queue & query layer
+├── dashboard/
+│   ├── app.py                 # Admin dashboard REST API (aiohttp)
 │   └── templates/
-│       └── index.html       # Cybersecurity Dark-Mode UI
-├── config/                  # Configuration & Threat Data
-│   ├── config.yaml          # Core Settings (Ports, Auth, Policies)
-│   └── categories.yaml      # Categorized Domain Threat Intelligence Lists
-├── benchmark/               # Performance Testing
-│   └── benchmark.py         # Async Concurrency & Latency Benchmarking Tool
-├── tests/                   # Automated Pytest Suite
-│   ├── test_proxy.py        # Integration Interception Tests
-│   ├── test_policy.py       # Engine Rule Precedence Tests
-│   └── test_sni.py          # Binary SNI Parsing Tests
-├── Dockerfile               # Production Containerfile
-├── docker-compose.yml       # Multi-service Orchestration
-├── ARCHITECTURE.md          # Technical Architecture & RFC Mechanics Deep Dive
-├── INTERVIEW_PREP.md        # 10 Detailed Technical Interview Q&As
-└── main.py                  # CLI Entrypoint
+│       └── index.html         # Web management console
+├── config/
+│   ├── config.yaml            # Server ports, buffer, and auth settings
+│   └── categories.yaml        # Categorized domain intelligence lists
+├── benchmark/
+│   └── benchmark.py           # Concurrency and latency load testing tool
+├── tests/
+│   ├── test_proxy.py          # HTTP GET & HTTPS CONNECT interception tests
+│   ├── test_policy.py         # Category & wildcard rule precedence tests
+│   └── test_sni.py            # TLS binary packet parsing tests
+├── docs/
+│   └── dashboard_preview.png  # Dashboard console interface preview
+├── Dockerfile                 # Container definition
+├── docker-compose.yml         # Container orchestration
+├── requirements.txt           # Python dependencies
+├── ARCHITECTURE.md            # Protocol mechanics and sequence diagrams
+└── main.py                    # Application entry point
 ```
 
 ---
 
-## 📜 License
+## License
 
-Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
-
----
-
-## 👤 Author
-
-**Kritika** ([@kr307](https://github.com/kr307))
-- Portfolio: [https://github.com/kr307](https://github.com/kr307)
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.
