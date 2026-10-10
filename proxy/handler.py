@@ -24,7 +24,7 @@ BLOCK_PAGE_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Access Denied - Corporate Security Policy</title>
+    <title>Access Denied - Policy Filter</title>
     <style>
         :root {{
             --bg: #0f172a;
@@ -126,19 +126,19 @@ BLOCK_PAGE_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div>
                 <h1>Access Blocked</h1>
-                <div class="subtitle">Secure Web Gateway Security Enforcement</div>
+                <div class="subtitle">Forward Proxy Policy Filter</div>
             </div>
         </div>
 
         <div class="alert-box">
-            The request to this resource was blocked according to organizational security policy rules.
+            This request was blocked by the forward proxy according to configured domain and URL filtering rules.
         </div>
 
         <div class="details-grid">
             <span class="label">Destination Host:</span>
             <span class="value">{host}</span>
 
-            <span class="label">Security Category:</span>
+            <span class="label">Matched Category:</span>
             <span class="value"><span class="badge">{category}</span></span>
 
             <span class="label">Enforced Rule:</span>
@@ -155,8 +155,8 @@ BLOCK_PAGE_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <div class="footer">
-            <span>Gateway ID: SWG-CORE-01</span>
-            <span>If you believe this is an error, contact your IT Administrator.</span>
+            <span>Aegis Gate Forward Proxy</span>
+            <span>Policy Filter</span>
         </div>
     </div>
 </body>
